@@ -1,31 +1,27 @@
 services:
-  # Netflix Eureka Discovery Server (:8761)
-  eureka:
-    build:
-      context: ./EurekaServer
-    container_name: eureka-server
-    ports:
-      - "8761:8761"
-    restart: unless-stopped
+  # =========================================================================
+  # Infrastructure Services
+  # =========================================================================
 
-  # Apache Kafka in KRaft mode (no Zookeeper required) (:9092)
-  kafka:
-    image: apache/kafka:latest
-    container_name: kafka
+  # PostgreSQL Database (:5432)
+  # Automatically creates user_db, auction_db, and bidding_db via init-db.sql
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
     ports:
-      - "9092:9092"
+      - "5432:5432"
     environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: user_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   # Redis for BiddingService Caching (:6379)
@@ -34,6 +30,36 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Apache Kafka in KRaft mode (no Zookeeper required) (:9092)
+  # Configured with dual listeners: kafka:9092 inside Docker, localhost:9092 on host
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     restart: unless-stopped
 
   # Visual UI for Kafka messages and topics (:8080)
@@ -48,3 +74,123 @@ services:
     depends_on:
       - kafka
     restart: unless-stopped
+
+  # Netflix Eureka Discovery Server (:8761)
+  eureka-server:
+    build:
+      context: ./EurekaServer
+      dockerfile: Dockerfile
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    restart: unless-stopped
+
+  # =========================================================================
+  # Application Microservices
+  # =========================================================================
+
+  # User Service (:8081)
+  user-service:
+    build:
+      context: ./UserService
+      dockerfile: Dockerfile
+    container_name: user-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/user_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      EUREKA_ENABLED: "true"
+      EUREKA_CLIENT_SERVICE_URL: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    restart: unless-stopped
+
+  # Auction Service (:8083)
+  auction-service:
+    build:
+      context: ./AuctionService
+      dockerfile: Dockerfile
+    container_name: auction-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auction_db?stringtype=unspecified
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_KAFKA_ENABLED: "true"
+      EUREKA_ENABLED: "true"
+      EUREKA_CLIENT_SERVICE_URL: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+    restart: unless-stopped
+
+  # Bidding Service (:8082)
+  bidding-service:
+    build:
+      context: ./BiddingService
+      dockerfile: Dockerfile
+    container_name: bidding-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bidding_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_AUCTION_SERVICE_URL: http://auction-service:8083
+      EUREKA_ENABLED: "true"
+      EUREKA_CLIENT_SERVICE_URL: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+      auction-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # =========================================================================
+  # Frontend Application
+  # =========================================================================
+
+  # React Frontend with Nginx Reverse Proxy (:5173)
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - user-service
+      - auction-service
+      - bidding-service
+    restart: unless-stopped
+
+# =========================================================================
+# Volumes
+# =========================================================================
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
