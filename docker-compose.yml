@@ -64,12 +64,12 @@ services:
       - kafka_data:/var/lib/kafka/data
     restart: unless-stopped
 
-  # Visual UI for Kafka messages and topics (:8080)
+  # Visual UI for Kafka messages and topics (:8085)
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     ports:
-      - "8080:8080"
+      - "8085:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
@@ -177,6 +177,47 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # Payment Service (:8084)
+  payment-service:
+    build:
+      context: ./PaymentService
+      dockerfile: Dockerfile
+    container_name: payment-service
+    ports:
+      - "8084:8084"
+    environment:
+      TZ: Asia/Kolkata
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Kolkata"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_KAFKA_ENABLED: "true"
+      EUREKA_ENABLED: "true"
+      EUREKA_CLIENT_SERVICE_URL: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      APP_FRONTEND_URL: http://localhost:5173
+      APP_AUCTION_SERVICE_URL: http://auction-service:8083
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+    restart: unless-stopped
+
+  # Stripe CLI Webhook Forwarder (Streams real-time events to payment-service inside Docker)
+  stripe-cli:
+    image: stripe/stripe-cli:latest
+    container_name: stripe-cli
+    command: listen --api-key ${STRIPE_API_KEY:-} --forward-to http://payment-service:8084/payments/webhook --events checkout.session.completed,payment_intent.succeeded,payment_intent.payment_failed
+    depends_on:
+      - payment-service
+    restart: unless-stopped
+
   # =========================================================================
   # Frontend Application
   # =========================================================================
@@ -193,6 +234,7 @@ services:
       - user-service
       - auction-service
       - bidding-service
+      - payment-service
     restart: unless-stopped
 
 # =========================================================================

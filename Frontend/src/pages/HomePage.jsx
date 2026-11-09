@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { auctionApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import AuctionCard from '../components/AuctionCard';
+import { setCachedUser } from '../utils/userCache';
 
 const STATUS_FILTERS = ['ALL', 'ACTIVE', 'PENDING', 'SCHEDULED', 'CLOSED'];
 
@@ -20,9 +21,17 @@ export default function HomePage({ setPage, setSelectedAuction }) {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('default');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  useEffect(() => {
+    if (user?.id && user?.username) {
+      setCachedUser(user.id, user.username);
+    }
+  }, [user]);
+
+  const load = useCallback(async (showSpinner = true) => {
+    if (showSpinner) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const params = { page: pageNum, size: 12 };
       if (statusFilter !== 'ALL') params.status = statusFilter;
@@ -30,14 +39,20 @@ export default function HomePage({ setPage, setSelectedAuction }) {
       setAuctions(Array.isArray(data) ? data : data.content || []);
       setTotalPages(data.totalPages || 1);
     } catch (err) {
-      setError(err.message || 'Failed to fetch auctions');
+      if (showSpinner) setError(err.message || 'Failed to fetch auctions');
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [statusFilter, pageNum, token]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(true); }, [load]);
   useEffect(() => { setPageNum(0); }, [statusFilter]);
+
+  // Real-time silent background sync every 3.5s
+  useEffect(() => {
+    const id = setInterval(() => load(false), 3500);
+    return () => clearInterval(id);
+  }, [load]);
 
   // Derived metrics for Dashboard
   const activeCount = auctions.filter(a => a.status === 'ACTIVE' || a.status === 'OPEN').length;
@@ -63,18 +78,18 @@ export default function HomePage({ setPage, setSelectedAuction }) {
   return (
     <div className="page">
       {/* Dashboard Welcome Hero */}
-      <div className="hero" style={{ padding: '2.5rem 0 2rem' }}>
+      <div className="hero" style={{ padding: '2.5rem 0 2rem', borderBottom: '1px solid var(--border)', background: 'transparent' }}>
         <div className="container">
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--accent-light)', color: 'var(--accent)', padding: '0.25rem 0.75rem', borderRadius: 'var(--radius-full)', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.75rem' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--accent-light)', color: 'var(--accent)', padding: '0.25rem 0.75rem', borderRadius: 'var(--radius-xs)', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.85rem', border: '1px solid var(--accent-border)' }}>
             <span>⚡ Live Auction Dashboard</span>
           </div>
-          <h1>
+          <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.2rem', letterSpacing: '-0.02em' }}>
             Welcome back, <span style={{ color: 'var(--accent)' }}>{user?.fullName || user?.username || 'Bidder'}</span>!
           </h1>
-          <p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.98rem', maxWidth: '720px', lineHeight: 1.6 }}>
             Track real-time auctions, place instant bids, or create new listings on the distributed exchange.
           </p>
-          <div className="hero-actions">
+          <div className="hero-actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={() => setStatusFilter('ACTIVE')}>
               🔴 Live Auctions ({activeCount})
             </button>
@@ -91,34 +106,34 @@ export default function HomePage({ setPage, setSelectedAuction }) {
       <div className="container" style={{ marginTop: '2rem' }}>
         {/* Quick Stats Grid */}
         <div className="dashboard-stats-grid">
-          <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setStatusFilter('ACTIVE')}>
-            <div className="stat-card-icon" style={{ color: 'var(--success)' }}>🔴</div>
+          <div className="stat-card" style={{ cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }} onClick={() => setStatusFilter('ACTIVE')}>
+            <div className="stat-card-icon" style={{ color: 'var(--success)', fontSize: '1.5rem' }}>🔴</div>
             <div className="stat-card-info">
-              <div className="stat-card-val">{activeCount}</div>
+              <div className="stat-card-val" style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{activeCount}</div>
               <div className="stat-card-label">Live Active Bids</div>
             </div>
           </div>
 
-          <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setStatusFilter('ALL')}>
-            <div className="stat-card-icon" style={{ color: 'var(--accent)' }}>🏷️</div>
+          <div className="stat-card" style={{ cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }} onClick={() => setStatusFilter('ALL')}>
+            <div className="stat-card-icon" style={{ color: 'var(--accent)', fontSize: '1.5rem' }}>🏷️</div>
             <div className="stat-card-info">
-              <div className="stat-card-val">{totalCount}</div>
+              <div className="stat-card-val" style={{ fontFamily: 'var(--font-mono)' }}>{totalCount}</div>
               <div className="stat-card-label">Auctions On Page</div>
             </div>
           </div>
 
-          <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setStatusFilter('SCHEDULED')}>
-            <div className="stat-card-icon" style={{ color: 'var(--info)' }}>⏳</div>
+          <div className="stat-card" style={{ cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }} onClick={() => setStatusFilter('SCHEDULED')}>
+            <div className="stat-card-icon" style={{ color: 'var(--info)', fontSize: '1.5rem' }}>⏳</div>
             <div className="stat-card-info">
-              <div className="stat-card-val">{upcomingCount}</div>
+              <div className="stat-card-val" style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{upcomingCount}</div>
               <div className="stat-card-label">Upcoming / Scheduled</div>
             </div>
           </div>
 
-          <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setPage('create')}>
-            <div className="stat-card-icon" style={{ color: 'var(--accent)' }}>➕</div>
+          <div className="stat-card" style={{ cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }} onClick={() => setPage('create')}>
+            <div className="stat-card-icon" style={{ color: 'var(--accent)', fontSize: '1.5rem' }}>➕</div>
             <div className="stat-card-info">
-              <div className="stat-card-val" style={{ fontSize: '1.05rem', color: 'var(--accent)' }}>New Item</div>
+              <div className="stat-card-val" style={{ fontSize: '1.1rem', color: 'var(--accent)' }}>New Item</div>
               <div className="stat-card-label">Create Auction</div>
             </div>
           </div>
@@ -227,6 +242,7 @@ export default function HomePage({ setPage, setSelectedAuction }) {
                 key={auction.id}
                 auction={auction}
                 onClick={() => { setSelectedAuction(auction.id); setPage('auction'); }}
+                onExpire={() => load(false)}
               />
             ))}
           </div>

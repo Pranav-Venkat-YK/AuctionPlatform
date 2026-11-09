@@ -62,9 +62,15 @@ public class AuctionService {
                 ? request.getMinBidIncrement()
                 : BigDecimal.ONE;
 
+        String img = request.getImg();
+        if (img == null && request.getItemAttributes() != null && request.getItemAttributes().containsKey("img")) {
+            img = String.valueOf(request.getItemAttributes().get("img"));
+        }
+
         Auction auction = Auction.builder()
                 .title(request.getTitle())
                 .description(request.getDescription())
+                .img(img)
                 .sellerId(request.getSellerId())
                 .status(initialStatus)
                 .startingPrice(request.getStartingPrice())

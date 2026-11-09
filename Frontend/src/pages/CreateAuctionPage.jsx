@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { auctionApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -15,6 +15,7 @@ export default function CreateAuctionPage({ setPage, setSelectedAuction }) {
   const [form, setForm] = useState({
     title: '',
     description: '',
+    img: '',
     startingPrice: '',
     reservePrice: '',
     minBidIncrement: '1.00',
@@ -26,6 +27,10 @@ export default function CreateAuctionPage({ setPage, setSelectedAuction }) {
   const [attrs, setAttrs] = useState([{ key: '', value: '' }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [imageMode, setImageMode] = useState('upload'); // 'upload' | 'url'
+  const [imageMeta, setImageMeta] = useState(null); // { name, size, dimensions }
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
 
   if (!user) {
     return (
@@ -51,6 +56,62 @@ export default function CreateAuctionPage({ setPage, setSelectedAuction }) {
   const addAttr = () => setAttrs(prev => [...prev, { key: '', value: '' }]);
   const removeAttr = i => setAttrs(prev => prev.filter((_, idx) => idx !== i));
 
+  const processFile = file => {
+    if (!file) return;
+    if (!file.type.match(/^image\/(jpeg|jpg|png|webp|gif)$/i)) {
+      setError('Please select a valid image file (JPG, PNG, or WebP).');
+      return;
+    }
+    setError('');
+
+    const reader = new FileReader();
+    reader.onerror = () => setError('Failed to read image file.');
+    reader.onload = ev => {
+      const img = new Image();
+      img.onerror = () => setError('Failed to process image file.');
+      img.onload = () => {
+        // Auto-scale to max 1440px on longest side for optimal high-DPI quality & fast transfer
+        const MAX = 1440;
+        let w = img.width;
+        let h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) {
+            h = Math.round((h * MAX) / w);
+            w = MAX;
+          } else {
+            w = Math.round((w * MAX) / h);
+            h = MAX;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const dataUrl = canvas.toDataURL(mime, 0.88);
+        const approxSizeKb = (dataUrl.length * 0.75 / 1024).toFixed(1);
+
+        setForm(f => ({ ...f, img: dataUrl }));
+        setImageMeta({
+          name: file.name,
+          size: `${approxSizeKb} KB`,
+          dimensions: `${w} × ${h} px`,
+        });
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setForm(f => ({ ...f, img: '' }));
+    setImageMeta(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const submit = async e => {
     e.preventDefault();
     setError('');
@@ -65,12 +126,16 @@ export default function CreateAuctionPage({ setPage, setSelectedAuction }) {
     attrs.forEach(({ key, value }) => {
       if (key.trim()) itemAttributes[key.trim()] = value.trim();
     });
+    if (form.img && form.img.trim()) {
+      itemAttributes['img'] = form.img.trim();
+    }
 
     const formatIso = dt => (dt && dt.length === 16 ? `${dt}:00` : dt);
 
     const payload = {
       title: form.title.trim(),
       description: form.description.trim() || null,
+      img: form.img.trim() || null,
       sellerId: Number(user?.id || user?.userId),
       startingPrice: parseFloat(form.startingPrice),
       reservePrice: form.reservePrice ? parseFloat(form.reservePrice) : null,
@@ -123,6 +188,117 @@ export default function CreateAuctionPage({ setPage, setSelectedAuction }) {
                   <label className="form-label">Item Title *</label>
                   <input className="form-control" name="title" value={form.title} onChange={handle}
                     placeholder="e.g. Antique Pocket Watch — 1920s Swiss Movement" required />
+                </div>
+                {/* Auction Item Image */}
+                <div className="form-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <label className="form-label" style={{ marginBottom: 0 }}>Item Image (JPG / PNG)</label>
+                    
+                    {/* Method Dropdown / Selector */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Source:</span>
+                      <select
+                        className="form-control"
+                        value={imageMode}
+                        onChange={e => setImageMode(e.target.value)}
+                        style={{ padding: '0.3rem 0.75rem', fontSize: '0.82rem', width: 'auto' }}
+                      >
+                        <option value="upload">💻 Local System (.jpg / .png)</option>
+                        <option value="url">🔗 Web Image URL</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Hidden native file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      if (e.target.files?.[0]) processFile(e.target.files[0]);
+                    }}
+                  />
+
+                  {/* If image is selected/loaded, show preview container */}
+                  {form.img ? (
+                    <div className="image-preview-container">
+                      <img
+                        src={form.img}
+                        alt="Auction Item Preview"
+                        className="image-preview-thumb"
+                        onError={() => setError('Image failed to render. Please check the file or URL.')}
+                      />
+                      <div className="image-preview-meta">
+                        <div className="image-preview-name">
+                          {imageMeta?.name || (form.img.startsWith('data:') ? 'Uploaded Local Image' : form.img)}
+                        </div>
+                        <div className="image-preview-info">
+                          {imageMeta ? `${imageMeta.dimensions} · ${imageMeta.size} · Ready to save to Postgres` : 'External Image URL'}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.35rem' }}>
+                          {imageMode === 'upload' && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => fileInputRef.current?.click()}
+                            >
+                              📂 Choose Another File
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: 'var(--danger)' }}
+                            onClick={clearImage}
+                          >
+                            Remove Image
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : imageMode === 'upload' ? (
+                    /* Local System File Picker & Dropzone */
+                    <div
+                      className={`image-upload-zone ${dragOver ? 'dragover' : ''}`}
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                      onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        setDragOver(false);
+                        if (e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0]);
+                      }}
+                    >
+                      <div className="image-upload-icon">📁</div>
+                      <div className="image-upload-title">
+                        Choose a .jpg or .png from your computer
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ pointerEvents: 'none', margin: '0.25rem 0' }}
+                      >
+                        Browse Local Files...
+                      </button>
+                      <div className="image-upload-hint">
+                        Or drag & drop here · JPG, PNG, WebP · Encoded and saved directly into Postgres
+                      </div>
+                    </div>
+                  ) : (
+                    /* Direct URL input */
+                    <div>
+                      <input
+                        className="form-control"
+                        name="img"
+                        value={form.img}
+                        onChange={handle}
+                        placeholder="https://example.com/item-photo.jpg"
+                        type="url"
+                      />
+                      <span className="form-hint">Direct link to an image of the auction item</span>
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Description</label>

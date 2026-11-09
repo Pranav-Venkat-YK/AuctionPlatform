@@ -3,6 +3,7 @@
 const BASE_USER    = '/users';
 const BASE_AUCTION = '/auctions';
 const BASE_BIDDING = '/bids';    // proxy to bidding service
+const BASE_PAYMENT = '/payments';
 
 async function request(url, options = {}) {
   const { headers, ...restOptions } = options;
@@ -66,4 +67,29 @@ export const bidApi = {
     return request(`${BASE_AUCTION}/${auctionId}/bids${qs ? '?' + qs : ''}`, { headers: auth(token) });
   },
 };
+
+// ---- Payment Service ----
+export const paymentApi = {
+  getById: (id, token) => request(`${BASE_PAYMENT}/${id}`, { headers: auth(token) }),
+  getByAuction: (auctionId, token) => request(`${BASE_PAYMENT}/auction/${auctionId}`, { headers: auth(token) }),
+  getByUser: (userId, token) => request(`${BASE_PAYMENT}/user/${userId}`, { headers: auth(token) }),
+  createCheckoutSession: (paymentId, body = {}, token) =>
+    request(`${BASE_PAYMENT}/checkout-session/${paymentId}`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify(body),
+    }),
+  createCheckoutSessionForAuction: (auctionId, body = {}, token) =>
+    request(`${BASE_PAYMENT}/checkout-session/auction/${auctionId}`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify(body),
+    }),
+  confirmSession: (sessionId, token) =>
+    request(`${BASE_PAYMENT}/confirm-session?sessionId=${encodeURIComponent(sessionId)}`, {
+      method: 'POST',
+      headers: auth(token),
+    }),
+};
+
 

@@ -21,10 +21,12 @@ export default function MyBidsPage({ setPage, setSelectedAuction }) {
   // bidding service endpoint. We load all auctions and fetch bid history from each.
   // As a pragmatic approach: fetch all auctions, then find bids by this user.
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showSpinner = true) => {
     if (!user || !token) return;
-    setLoading(true);
-    setError('');
+    if (showSpinner) {
+      setLoading(true);
+      setError('');
+    }
     try {
       // Load recent auctions (up to 50)
       const data = await auctionApi.list({ size: 50, page: 0 }, token);
@@ -51,13 +53,19 @@ export default function MyBidsPage({ setPage, setSelectedAuction }) {
       userBids.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       setBids(userBids);
     } catch (err) {
-      setError(err.message);
+      if (showSpinner) setError(err.message);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [user, token]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(true); }, [load]);
+
+  // Real-time background sync every 4s
+  useEffect(() => {
+    const id = setInterval(() => load(false), 4000);
+    return () => clearInterval(id);
+  }, [load]);
 
   if (!user) {
     return (
@@ -121,6 +129,58 @@ export default function MyBidsPage({ setPage, setSelectedAuction }) {
           </div>
         ) : (
           <>
+            {/* Won auctions section */}
+            {wonBids.length > 0 && (
+              <div style={{ marginBottom: '2rem' }}>
+                <h2 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--success, #10b981)' }}>
+                  🏆 Won Auctions
+                  <span className="badge badge-active">{wonBids.length}</span>
+                </h2>
+                <div className="bids-list">
+                  {wonBids.map((bid, i) => {
+                    const auction = auctionMap[bid.auctionId];
+                    return (
+                      <div
+                        key={`won-${bid.auctionId}-${i}`}
+                        className="bid-row"
+                        style={{
+                          cursor: 'pointer',
+                          borderColor: 'var(--success, #10b981)',
+                          background: 'rgba(16, 185, 129, 0.04)'
+                        }}
+                        onClick={() => { setSelectedAuction(bid.auctionId); setPage('auction'); }}
+                      >
+                        <div>
+                          <div className="bid-row-title" style={{ fontWeight: 700 }}>
+                            {bid.auctionTitle || `Auction #${bid.auctionId}`}
+                          </div>
+                          <div className="bid-row-auction">Closed • Winning bid placed {formatDateTime(bid.timestamp)}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                          <span className="badge badge-active" style={{ fontSize: '0.75rem' }}>
+                            🏆 Winner
+                          </span>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedAuction(bid.auctionId);
+                              setPage('auction');
+                            }}
+                          >
+                            💳 Pay with Stripe
+                          </button>
+                        </div>
+                        <div className="bid-row-amount" style={{ color: 'var(--success, #10b981)' }}>
+                          {formatPrice(bid.amount)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Active bids section */}
             {activeBids.length > 0 && (
               <div style={{ marginBottom: '2rem' }}>

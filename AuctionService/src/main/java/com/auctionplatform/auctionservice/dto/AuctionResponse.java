@@ -18,6 +18,7 @@ public class AuctionResponse {
     private Long id;
     private String title;
     private String description;
+    private String img;
     private Long sellerId;
     private String status;
     private BigDecimal startingPrice;
@@ -43,6 +44,7 @@ public class AuctionResponse {
                 .id(auction.getId())
                 .title(auction.getTitle())
                 .description(auction.getDescription())
+                .img(auction.getImg() != null ? auction.getImg() : (auction.getItemAttributes() != null && auction.getItemAttributes().get("img") != null ? auction.getItemAttributes().get("img").toString() : null))
                 .sellerId(auction.getSellerId())
                 .status(auction.getStatus() != null ? auction.getStatus().name() : null)
                 .startingPrice(auction.getStartingPrice())

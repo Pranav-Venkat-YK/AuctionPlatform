@@ -24,6 +24,8 @@ public class CreateAuctionRequest {
 
     private String description;
 
+    private String img;
+
     @NotNull(message = "Seller ID is required")
     private Long sellerId;
 

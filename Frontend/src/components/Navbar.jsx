@@ -11,7 +11,7 @@ export default function Navbar({ page, setPage }) {
 
   const navItems = [
     { label: 'Auctions Dashboard', key: 'home' },
-    { label: 'Live Auctions',       key: 'live' },
+    { label: 'Live Auctions',       key: 'live', isLive: true },
     ...(user ? [
       { label: 'Create Auction',    key: 'create' },
       { label: 'My Bids',           key: 'mybids' },
@@ -29,7 +29,7 @@ export default function Navbar({ page, setPage }) {
       <div className="navbar-inner">
         <button
           className="navbar-brand"
-          style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem' }}
           onClick={() => setPage('home')}
         >
           <span className="brand-icon">🔨</span>
@@ -42,7 +42,18 @@ export default function Navbar({ page, setPage }) {
               key={item.key}
               className={`nav-link${page === item.key ? ' active' : ''}`}
               onClick={() => setPage(item.key)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}
             >
+              {item.isLive && (
+                <span style={{
+                  display: 'inline-block',
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'var(--accent)',
+                  boxShadow: '0 0 6px var(--accent)'
+                }} />
+              )}
               {item.label}
             </button>
           ))}
@@ -67,10 +78,10 @@ export default function Navbar({ page, setPage }) {
               </div>
               {menuOpen && (
                 <div style={{
-                  position: 'absolute', right: 0, top: 'calc(100% + 8px)',
+                  position: 'absolute', right: 0, top: 'calc(100% + 6px)',
                   background: 'var(--bg-surface)', border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)',
-                  minWidth: 175, zIndex: 200, overflow: 'hidden',
+                  borderRadius: 'var(--radius-xs)', minWidth: 185, zIndex: 200,
+                  boxShadow: 'none', overflow: 'hidden'
                 }}>
                   <button className="profile-nav-item" onClick={() => { setPage('profile'); setMenuOpen(false); }}>
                     👤 My Profile

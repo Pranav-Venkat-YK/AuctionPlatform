@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { auctionApi, bidApi } from '../api';
+import { auctionApi, bidApi, paymentApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { formatPrice, timeLeft, isUrgent } from '../components/AuctionCard';
+import { useUsername, useUsernames, setCachedUser } from '../utils/userCache';
 
 const ITEM_EMOJI = ['🏺', '🎨', '💎', '📿', '🏛️', '🎭', '🕰️', '📚', '🎸', '🌿', '🏆', '🔮'];
 
 function formatDateTime(dt) {
   if (!dt) return '—';
-  return new Date(dt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(dt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'medium' });
 }
 
 export default function AuctionDetailPage({ auctionId, setPage }) {
@@ -18,13 +19,24 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
   const [auction, setAuction] = useState(null);
   const [bids, setBids] = useState([]);
   const [highest, setHighest] = useState(null);
+  const [payment, setPayment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [bidLoading, setBidLoading] = useState(false);
+  const [payLoading, setPayLoading] = useState(false);
+  const [payError, setPayError] = useState('');
   const [bidAmount, setBidAmount] = useState('');
   const [error, setError] = useState('');
   const [bidError, setBidError] = useState('');
   const [tab, setTab] = useState('details');
   const [tl, setTl] = useState('');
+  const [imgError, setImgError] = useState(false);
+
+  const displayBidderId = highest?.currentBidderId ?? auction?.highestBidderId;
+  const sellerName = useUsername(auction?.sellerId, token);
+  const highestBidderName = useUsername(displayBidderId, token);
+  const bidderIds = bids.map(b => b.bidderId);
+  const bidderNames = useUsernames(bidderIds, token);
+  const itemImg = auction?.img || auction?.itemAttributes?.img || auction?.imageUrl;
 
   const loadAuction = useCallback(async () => {
     setLoading(true);
@@ -55,26 +67,101 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
 
   useEffect(() => { loadAuction(); loadBids(); }, [loadAuction, loadBids]);
 
+  // Prime cache with currently logged-in user
+  useEffect(() => {
+    if (user?.id && user?.username) {
+      setCachedUser(user.id, user.username);
+    }
+  }, [user]);
+
+  // Load payment status if auction is closed
+  useEffect(() => {
+    if (auction?.status === 'CLOSED' && auctionId) {
+      paymentApi.getByAuction(auctionId, token)
+        .then(setPayment)
+        .catch(() => setPayment(null));
+    }
+  }, [auction?.status, auctionId, token]);
+
+  const handlePayWithStripe = async () => {
+    if (!token) {
+      setPayError('Please log in to complete payment.');
+      return;
+    }
+    setPayLoading(true);
+    setPayError('');
+    try {
+      const res = await paymentApi.createCheckoutSessionForAuction(
+        auctionId,
+        { title: auction.title },
+        token
+      );
+      if (res && res.checkoutUrl) {
+        // Redirect to Stripe Hosted Checkout
+        window.location.href = res.checkoutUrl;
+      } else {
+        throw new Error('No checkout URL received from payment service');
+      }
+    } catch (err) {
+      setPayError(err.message);
+      addToast(err.message, 'error');
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
   // Live countdown
   useEffect(() => {
     if (!auction?.endTime) return;
-    const interval = setInterval(() => setTl(timeLeft(auction.endTime)), 1000);
+    const interval = setInterval(() => {
+      const nextTl = timeLeft(auction.endTime);
+      setTl(nextTl);
+      // If timer just ended and auction is still marked ACTIVE, trigger fetch to sync with backend
+      if (nextTl === 'Ended' && auction?.status === 'ACTIVE') {
+        auctionApi.get(auctionId, token).then(a => {
+          if (a && a.status !== auction.status) setAuction(a);
+        }).catch(() => {});
+      }
+    }, 1000);
     setTl(timeLeft(auction.endTime));
     return () => clearInterval(interval);
-  }, [auction?.endTime]);
+  }, [auction?.endTime, auction?.status, auctionId, token]);
 
-  // Live poll highest bid & bid history every 3s
+  // Live poll auction details, highest bid, bid history & payment every 3s
   useEffect(() => {
-    const pollId = setInterval(async () => {
+    if (!auctionId) return;
+
+    const poll = async () => {
       try {
-        const [h, b] = await Promise.all([
+        const [a, h, b] = await Promise.all([
+          auctionApi.get(auctionId, token).catch(() => null),
           bidApi.highest(auctionId, token).catch(() => null),
           bidApi.history(auctionId, { size: 20 }, token).catch(() => null),
         ]);
+        if (a) {
+          setAuction(prev => {
+            if (!prev) return a;
+            if (
+              prev.status !== a.status ||
+              prev.currentPrice !== a.currentPrice ||
+              prev.highestBidderId !== a.highestBidderId
+            ) {
+              return a;
+            }
+            return prev;
+          });
+          if (a.status === 'CLOSED') {
+            paymentApi.getByAuction(auctionId, token)
+              .then(p => setPayment(p))
+              .catch(() => {});
+          }
+        }
         if (h) setHighest(h);
         if (b) setBids(Array.isArray(b) ? b : b.content || []);
       } catch {}
-    }, 3000);
+    };
+
+    const pollId = setInterval(poll, 3000);
     return () => clearInterval(pollId);
   }, [auctionId, token]);
 
@@ -119,7 +206,6 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
   const emoji = ITEM_EMOJI[auction.id % ITEM_EMOJI.length];
 
   const displayPrice = highest?.currentAmount ?? auction.currentPrice ?? auction.startingPrice;
-  const displayBidderId = highest?.currentBidderId ?? auction.highestBidderId;
 
   const badgeClass = {
     ACTIVE: 'badge-active', OPEN: 'badge-open', PENDING: 'badge-pending',
@@ -138,13 +224,35 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
           {/* Main */}
           <div className="auction-detail-main">
             <div className="card">
-              {/* Image */}
+              {/* Image Frame */}
               <div style={{
-                height: 240, background: 'linear-gradient(135deg, var(--bg-elevated) 0%, var(--accent-light) 100%)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem',
-                borderBottom: '1px solid var(--border)'
+                minHeight: 260, maxHeight: 420, background: 'var(--bg-elevated)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '5.5rem',
+                borderBottom: '1px solid var(--border)', position: 'relative', overflow: 'hidden'
               }}>
-                {emoji}
+                <div style={{
+                  position: 'absolute', top: '12px', left: '16px', zIndex: 2,
+                  background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                  padding: '2px 8px', fontSize: '0.7rem', fontFamily: 'var(--font-mono)',
+                  color: 'var(--text-muted)'
+                }}>
+                  Lot #{auction.id}
+                </div>
+                {itemImg && !imgError ? (
+                  <img
+                    src={itemImg}
+                    alt={auction.title}
+                    style={{
+                      width: '100%',
+                      maxHeight: '420px',
+                      objectFit: 'contain',
+                      background: 'var(--bg-elevated)'
+                    }}
+                    onError={() => setImgError(true)}
+                  />
+                ) : (
+                  emoji
+                )}
               </div>
 
               <div className="card-body">
@@ -179,8 +287,8 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
                         ['Min Increment', formatPrice(auction.minBidIncrement)],
                         ['Starts', formatDateTime(auction.startTime)],
                         ['Ends', formatDateTime(auction.endTime)],
-                        ['Seller ID', `#${auction.sellerId}`],
-                        ['Highest Bidder', displayBidderId ? `#${displayBidderId}` : 'None yet'],
+                        ['Seller', sellerName ? `@${sellerName}` : (auction.sellerId ? `User #${auction.sellerId}` : '—')],
+                        ['Highest Bidder', highestBidderName ? `@${highestBidderName}` : (displayBidderId ? `User #${displayBidderId}` : 'None yet')],
                       ].map(([label, val]) => (
                         <div key={label} style={{
                           padding: '0.75rem 1rem', background: 'var(--bg-elevated)',
@@ -198,6 +306,42 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
 
                 {tab === 'bids' && (
                   <div>
+                    {/* SVG Live Bidding Trajectory Graph */}
+                    <div style={{ marginBottom: '1.25rem', padding: '1rem', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                          Price Progression
+                        </span>
+                        <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>
+                          ● {bids.length} Bids Logged
+                        </span>
+                      </div>
+
+                      <svg viewBox="0 0 500 100" style={{ width: '100%', height: '80px', overflow: 'visible' }}>
+                        <line x1="30" y1="20" x2="480" y2="20" stroke="var(--border)" strokeWidth="0.75" strokeDasharray="3 3" />
+                        <line x1="30" y1="50" x2="480" y2="50" stroke="var(--border)" strokeWidth="0.75" strokeDasharray="3 3" />
+                        <line x1="30" y1="80" x2="480" y2="80" stroke="var(--border)" strokeWidth="1" />
+                        <polyline
+                          fill="none"
+                          stroke="var(--accent)"
+                          strokeWidth="2"
+                          points={
+                            bids.length > 1
+                              ? bids.slice(0, 10).reverse().map((b, idx, arr) => {
+                                  const x = 30 + (idx / Math.max(1, arr.length - 1)) * 440;
+                                  const minAmt = parseFloat(auction.startingPrice || 0);
+                                  const maxAmt = Math.max(minAmt + 1, ...arr.map(item => parseFloat(item.amount || 0)));
+                                  const norm = (parseFloat(b.amount || minAmt) - minAmt) / (maxAmt - minAmt || 1);
+                                  const y = 80 - (norm * 60);
+                                  return `${x},${y}`;
+                                }).join(' ')
+                              : "30,80 250,50 480,20"
+                          }
+                        />
+                        <circle cx="480" cy={bids.length > 1 ? "20" : "20"} r="4" fill="var(--accent)" stroke="#FFFFFF" strokeWidth="1.5" />
+                      </svg>
+                    </div>
+
                     {bids.length === 0 ? (
                       <div className="empty-state" style={{ padding: '2rem' }}>
                         <div className="empty-icon">🎯</div>
@@ -209,7 +353,12 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
                         {bids.map((bid, i) => (
                           <div key={bid.id || i} className="bid-history-item">
                             <div>
-                              <div className="bid-history-bidder">Bidder #{bid.bidderId}</div>
+                              <div className="bid-history-bidder">
+                                @{bidderNames[bid.bidderId] || (user && String(user.id) === String(bid.bidderId) ? user.username : `User #${bid.bidderId}`)}
+                                {user && String(user.id) === String(bid.bidderId) && (
+                                  <span style={{ marginLeft: '0.35rem', fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600 }}>(You)</span>
+                                )}
+                              </div>
                               <div className="bid-history-time">{formatDateTime(bid.timestamp)}</div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -251,7 +400,10 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
                 <div className="amount">{formatPrice(displayPrice)}</div>
                 {displayBidderId && (
                   <div className="increment" style={{ marginTop: '0.25rem' }}>
-                    by Bidder #{displayBidderId}
+                    by @{highestBidderName || (user && String(user.id) === String(displayBidderId) ? user.username : displayBidderId)}
+                    {user && String(user.id) === String(displayBidderId) && (
+                      <span style={{ marginLeft: '0.3rem', color: 'var(--accent)', fontWeight: 700 }}>(You)</span>
+                    )}
                   </div>
                 )}
                 <div className="increment">
@@ -259,16 +411,18 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
                 </div>
               </div>
 
-              {/* Timer */}
+              {/* High-Visibility Real-Time Countdown Timer Badge */}
               {tl && (
                 <div style={{
-                  textAlign: 'center', padding: '0.75rem', marginBottom: '1rem',
+                  textAlign: 'center', padding: '0.85rem 1rem', marginBottom: '1.25rem',
                   background: urgent ? 'var(--danger-bg)' : 'var(--bg-elevated)',
-                  borderRadius: 'var(--radius-sm)', border: `1px solid ${urgent ? '#f5c6c3' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-xs)', border: `1px solid ${urgent ? 'var(--danger)' : 'var(--border)'}`,
                   color: urgent ? 'var(--danger)' : 'var(--text-secondary)',
                   fontWeight: 700, fontSize: '1rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
                 }}>
-                  {urgent ? '🔥' : '⏰'} {tl}
+                  <span>{urgent ? '🔥' : '⏰'}</span>
+                  <span>{tl}</span>
                 </div>
               )}
 
@@ -286,12 +440,38 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
                         value={bidAmount}
                         onChange={e => setBidAmount(e.target.value)}
                         required
+                        style={{ fontFamily: 'var(--font-mono)', fontSize: '1.05rem', fontWeight: 600 }}
                       />
                       <span className="form-hint">
                         Minimum: {formatPrice(parseFloat(auction.currentPrice || 0) + parseFloat(auction.minBidIncrement || 1))}
                       </span>
+
+                      {/* Quick Increment Pill Steppers */}
+                      <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.4rem' }}>
+                        {[500, 1000, 5000, 10000].map(inc => (
+                          <button
+                            key={inc}
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ flex: 1, padding: '0.3rem 0.2rem', fontSize: '0.7rem', fontFamily: 'var(--font-mono)' }}
+                            onClick={() => {
+                              const cur = parseFloat(bidAmount || 0);
+                              const minReq = parseFloat(auction.currentPrice || 0) + parseFloat(auction.minBidIncrement || 1);
+                              const base = cur >= minReq ? cur : minReq;
+                              setBidAmount((base + inc).toFixed(2));
+                            }}
+                          >
+                            +₹{inc >= 1000 ? `${inc/1000}k` : inc}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <button className="btn btn-primary btn-full btn-lg" type="submit" disabled={bidLoading}>
+
+                    <button
+                      className="btn btn-primary btn-full btn-lg"
+                      type="submit"
+                      disabled={bidLoading || !bidAmount || parseFloat(bidAmount) < (parseFloat(auction.currentPrice || 0) + parseFloat(auction.minBidIncrement || 1))}
+                    >
                       {bidLoading ? 'Placing Bid…' : '🔨 Place Bid'}
                     </button>
                   </form>
@@ -305,13 +485,61 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
                     </button>
                   </div>
                 )
+              ) : status === 'CLOSED' && user && displayBidderId && String(user.id) === String(displayBidderId) ? (
+                <div style={{
+                  padding: '1.25rem',
+                  background: payment?.status === 'SUCCEEDED' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(59, 130, 246, 0.08)',
+                  border: `1px solid ${payment?.status === 'SUCCEEDED' ? 'var(--success, #10b981)' : 'var(--accent, #3b82f6)'}`,
+                  borderRadius: 'var(--radius-sm)',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.25rem' }}>
+                    {payment?.status === 'SUCCEEDED' ? '🏆' : '🎉'}
+                  </div>
+                  <h3 style={{
+                    color: payment?.status === 'SUCCEEDED' ? 'var(--success, #10b981)' : 'var(--accent, #2563eb)',
+                    marginBottom: '0.25rem',
+                    fontSize: '1.1rem'
+                  }}>
+                    {payment?.status === 'SUCCEEDED' ? 'Payment Completed!' : 'You Won This Auction!'}
+                  </h3>
+                  <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                    Winning Amount: <strong>{formatPrice(displayPrice)}</strong>
+                  </p>
+
+                  {payment?.status === 'SUCCEEDED' ? (
+                    <div className="badge badge-active" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
+                      ✓ Paid via Stripe
+                    </div>
+                  ) : (
+                    <div>
+                      {payError && <div className="alert alert-error" style={{ marginBottom: '0.5rem', fontSize: '0.82rem' }}>{payError}</div>}
+                      <button
+                        className="btn btn-primary btn-full btn-lg"
+                        onClick={handlePayWithStripe}
+                        disabled={payLoading}
+                      >
+                        {payLoading ? 'Redirecting to Stripe…' : '💳 Pay with Stripe'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div style={{
                   textAlign: 'center', padding: '1rem',
                   background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)',
                   color: 'var(--text-muted)', fontWeight: 600,
                 }}>
-                  {status === 'CLOSED' ? '🏁 Auction Ended' :
+                  {status === 'CLOSED' ? (
+                    <div>
+                      <div>🏁 Auction Ended</div>
+                      {displayBidderId && (
+                        <div style={{ fontSize: '0.82rem', marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
+                          Won by @{highestBidderName || (user && String(user.id) === String(displayBidderId) ? user.username : displayBidderId)} for {formatPrice(displayPrice)}
+                        </div>
+                      )}
+                    </div>
+                  ) :
                    status === 'PENDING' ? '⏳ Auction Pending' :
                    status === 'SCHEDULED' ? '🗓️ Not Started Yet' : '⚫ Bidding Closed'}
                 </div>

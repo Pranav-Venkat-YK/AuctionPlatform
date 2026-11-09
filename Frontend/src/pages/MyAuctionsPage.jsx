@@ -9,17 +9,25 @@ export default function MyAuctionsPage({ setPage, setSelectedAuction }) {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = true) => {
     if (!user) return;
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const data = await auctionApi.bySeller(user.id, { size: 50 }, token);
       setAuctions(Array.isArray(data) ? data : data.content || []);
     } catch {}
-    finally { setLoading(false); }
+    finally {
+      if (showLoading) setLoading(false);
+    }
   }, [user, token]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(true); }, [load]);
+
+  // Real-time silent refresh every 4s
+  useEffect(() => {
+    const id = setInterval(() => load(false), 4000);
+    return () => clearInterval(id);
+  }, [load]);
 
   if (!user) {
     return (
@@ -63,8 +71,12 @@ export default function MyAuctionsPage({ setPage, setSelectedAuction }) {
         ) : (
           <div className="auction-grid">
             {filtered.map(a => (
-              <AuctionCard key={a.id} auction={a}
-                onClick={() => { setSelectedAuction(a.id); setPage('auction'); }} />
+              <AuctionCard
+                key={a.id}
+                auction={a}
+                onClick={() => { setSelectedAuction(a.id); setPage('auction'); }}
+                onExpire={() => load(false)}
+              />
             ))}
           </div>
         )}

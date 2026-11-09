@@ -37,6 +37,9 @@ public class Auction {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "img", columnDefinition = "TEXT")
+    private String img;
+
     @NotNull
     @Column(name = "seller_id", nullable = false)
     private Long sellerId;
