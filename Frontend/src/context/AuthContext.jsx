@@ -3,9 +3,15 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(() => sessionStorage.getItem('bv_token') || null);
+  const [token, setToken] = useState(() => 
+    sessionStorage.getItem('bv_token') || localStorage.getItem('bv_token') || null
+  );
   const [user, setUser] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('bv_user')); } catch { return null; }
+    try { 
+      return JSON.parse(sessionStorage.getItem('bv_user') || localStorage.getItem('bv_user')); 
+    } catch { 
+      return null; 
+    }
   });
 
   const login = useCallback((authToken, userData) => {
@@ -13,6 +19,8 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
     sessionStorage.setItem('bv_token', authToken);
     sessionStorage.setItem('bv_user', JSON.stringify(userData));
+    localStorage.setItem('bv_token', authToken);
+    localStorage.setItem('bv_user', JSON.stringify(userData));
   }, []);
 
   const logout = useCallback(() => {
@@ -20,12 +28,15 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     sessionStorage.removeItem('bv_token');
     sessionStorage.removeItem('bv_user');
+    localStorage.removeItem('bv_token');
+    localStorage.removeItem('bv_user');
   }, []);
 
   const updateUser = useCallback((data) => {
     setUser(prev => {
       const updated = { ...prev, ...data };
       sessionStorage.setItem('bv_user', JSON.stringify(updated));
+      localStorage.setItem('bv_user', JSON.stringify(updated));
       return updated;
     });
   }, []);

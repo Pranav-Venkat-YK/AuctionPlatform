@@ -66,15 +66,17 @@ export default function CreateAuctionPage({ setPage, setSelectedAuction }) {
       if (key.trim()) itemAttributes[key.trim()] = value.trim();
     });
 
+    const formatIso = dt => (dt && dt.length === 16 ? `${dt}:00` : dt);
+
     const payload = {
       title: form.title.trim(),
       description: form.description.trim() || null,
-      sellerId: user.id || user.userId,
+      sellerId: Number(user?.id || user?.userId),
       startingPrice: parseFloat(form.startingPrice),
       reservePrice: form.reservePrice ? parseFloat(form.reservePrice) : null,
       minBidIncrement: parseFloat(form.minBidIncrement) || 1,
-      startTime: form.startTime,
-      endTime: form.endTime,
+      startTime: formatIso(form.startTime),
+      endTime: formatIso(form.endTime),
       itemAttributes: Object.keys(itemAttributes).length > 0 ? itemAttributes : null,
     };
 

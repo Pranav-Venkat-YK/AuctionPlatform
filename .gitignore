@@ -8,6 +8,8 @@ dist/
 target/
 build/
 *.class
+*.ps1
+
 
 # Environment & Secret files
 .env

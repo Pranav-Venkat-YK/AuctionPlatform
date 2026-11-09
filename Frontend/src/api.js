@@ -5,9 +5,13 @@ const BASE_AUCTION = '/auctions';
 const BASE_BIDDING = '/bids';    // proxy to bidding service
 
 async function request(url, options = {}) {
+  const { headers, ...restOptions } = options;
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
+    ...restOptions,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(headers || {}),
+    },
   });
 
   let data;

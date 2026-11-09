@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { userApi } from '../api';
 
 export default function RegisterPage({ setPage }) {
+  const { login } = useAuth();
   const { addToast } = useToast();
   const [form, setForm] = useState({ username: '', email: '', fullName: '', password: '' });
   const [loading, setLoading] = useState(false);
@@ -17,8 +19,14 @@ export default function RegisterPage({ setPage }) {
     setLoading(true);
     try {
       await userApi.register(form);
-      addToast('Account created! Please log in.', 'success');
-      setPage('login');
+      const data = await userApi.login({
+        username: form.username,
+        password: form.password,
+      });
+      const userId = data.id || data.userId;
+      login(data.token, { id: userId, username: data.username, email: data.email });
+      addToast(`Account created! Welcome, ${data.username}! 🎉`, 'success');
+      setPage('home');
     } catch (err) {
       setError(err.message || 'Registration failed');
     } finally {
