@@ -56,7 +56,7 @@ public class AuctionService {
         LocalDateTime now = LocalDateTime.now();
         AuctionStatus initialStatus = request.getStartTime().isBefore(now) || request.getStartTime().isEqual(now)
                 ? AuctionStatus.ACTIVE
-                : AuctionStatus.DRAFT;
+                : AuctionStatus.SCHEDULED;
 
         BigDecimal minIncrement = request.getMinBidIncrement() != null && request.getMinBidIncrement().compareTo(BigDecimal.ZERO) > 0
                 ? request.getMinBidIncrement()

@@ -10,13 +10,19 @@ export default function Navbar({ page, setPage }) {
   const initials = user?.username ? user.username.slice(0, 2).toUpperCase() : '?';
 
   const navItems = [
-    { label: 'Browse Auctions', key: 'home' },
-    { label: 'Live Auctions',   key: 'live' },
+    { label: 'Auctions Dashboard', key: 'home' },
+    { label: 'Live Auctions',       key: 'live' },
     ...(user ? [
-      { label: 'Create Auction', key: 'create' },
-      { label: 'My Bids',        key: 'mybids' },
+      { label: 'Create Auction',    key: 'create' },
+      { label: 'My Bids',           key: 'mybids' },
     ] : []),
   ];
+
+  const handleSignOut = () => {
+    logout();
+    setPage('login');
+    setMenuOpen(false);
+  };
 
   return (
     <nav className="navbar">
@@ -64,7 +70,7 @@ export default function Navbar({ page, setPage }) {
                   position: 'absolute', right: 0, top: 'calc(100% + 8px)',
                   background: 'var(--bg-surface)', border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)',
-                  minWidth: 170, zIndex: 200, overflow: 'hidden',
+                  minWidth: 175, zIndex: 200, overflow: 'hidden',
                 }}>
                   <button className="profile-nav-item" onClick={() => { setPage('profile'); setMenuOpen(false); }}>
                     👤 My Profile
@@ -75,8 +81,11 @@ export default function Navbar({ page, setPage }) {
                   <button className="profile-nav-item" onClick={() => { setPage('myauctions'); setMenuOpen(false); }}>
                     🏷️ My Auctions
                   </button>
+                  <button className="profile-nav-item" onClick={() => { setPage('create'); setMenuOpen(false); }}>
+                    ➕ Create Auction
+                  </button>
                   <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />
-                  <button className="profile-nav-item" style={{ color: 'var(--danger)' }} onClick={() => { logout(); setMenuOpen(false); }}>
+                  <button className="profile-nav-item" style={{ color: 'var(--danger)' }} onClick={handleSignOut}>
                     🚪 Sign Out
                   </button>
                 </div>
@@ -84,7 +93,7 @@ export default function Navbar({ page, setPage }) {
             </div>
           ) : (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => setPage('login')}>Log In</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setPage('login')}>Sign In</button>
               <button className="btn btn-primary btn-sm" onClick={() => setPage('register')}>Register</button>
             </div>
           )}
@@ -93,4 +102,3 @@ export default function Navbar({ page, setPage }) {
     </nav>
   );
 }
-

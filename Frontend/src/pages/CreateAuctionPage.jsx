@@ -93,7 +93,11 @@ export default function CreateAuctionPage({ setPage, setSelectedAuction }) {
     }
   };
 
-  const minStart = new Date(Date.now() + 60000).toISOString().slice(0, 16);
+  const toLocalIso = (d) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const minStart = toLocalIso(new Date(Date.now() + 60000));
 
   return (
     <div className="page">

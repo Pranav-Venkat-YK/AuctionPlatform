@@ -36,7 +36,8 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
       ]);
       setAuction(a);
       setHighest(h);
-      const minNext = parseFloat(a.currentPrice || a.startingPrice || 0) + parseFloat(a.minBidIncrement || 1);
+      const effectivePrice = h?.currentAmount ?? a.currentPrice ?? a.startingPrice ?? 0;
+      const minNext = parseFloat(effectivePrice) + parseFloat(a.minBidIncrement || 1);
       setBidAmount(minNext.toFixed(2));
     } catch (err) {
       setError(err.message);
@@ -62,12 +63,28 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
     return () => clearInterval(interval);
   }, [auction?.endTime]);
 
+  // Live poll highest bid & bid history every 3s
+  useEffect(() => {
+    const pollId = setInterval(async () => {
+      try {
+        const [h, b] = await Promise.all([
+          bidApi.highest(auctionId, token).catch(() => null),
+          bidApi.history(auctionId, { size: 20 }, token).catch(() => null),
+        ]);
+        if (h) setHighest(h);
+        if (b) setBids(Array.isArray(b) ? b : b.content || []);
+      } catch {}
+    }, 3000);
+    return () => clearInterval(pollId);
+  }, [auctionId, token]);
+
   const placeBid = async e => {
     e.preventDefault();
     if (!token) { setBidError('Please log in to place a bid.'); return; }
     if (!bidAmount || parseFloat(bidAmount) <= 0) { setBidError('Enter a valid bid amount.'); return; }
 
-    const minRequired = parseFloat(auction.currentPrice || auction.startingPrice || 0) + parseFloat(auction.minBidIncrement || 1);
+    const effectivePrice = highest?.currentAmount ?? auction.currentPrice ?? auction.startingPrice ?? 0;
+    const minRequired = parseFloat(effectivePrice) + parseFloat(auction.minBidIncrement || 1);
     if (parseFloat(bidAmount) < minRequired) {
       setBidError(`Minimum bid is ${formatPrice(minRequired)}`);
       return;
@@ -78,8 +95,7 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
     try {
       await bidApi.place(auctionId, { bidderId: user.id, amount: parseFloat(bidAmount) }, token);
       addToast(`Bid of ${formatPrice(bidAmount)} placed! 🎉`, 'success');
-      await loadAuction();
-      await loadBids();
+      await Promise.all([loadAuction(), loadBids()]);
     } catch (err) {
       setBidError(err.message);
     } finally {
@@ -101,6 +117,9 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
   const isActive = status === 'ACTIVE' || status === 'OPEN';
   const urgent = isUrgent(auction.endTime);
   const emoji = ITEM_EMOJI[auction.id % ITEM_EMOJI.length];
+
+  const displayPrice = highest?.currentAmount ?? auction.currentPrice ?? auction.startingPrice;
+  const displayBidderId = highest?.currentBidderId ?? auction.highestBidderId;
 
   const badgeClass = {
     ACTIVE: 'badge-active', OPEN: 'badge-open', PENDING: 'badge-pending',
@@ -155,13 +174,13 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                       {[
                         ['Starting Price', formatPrice(auction.startingPrice)],
-                        ['Current Price', formatPrice(auction.currentPrice)],
+                        ['Current Price', formatPrice(displayPrice)],
                         ['Reserve Price', auction.reservePrice ? formatPrice(auction.reservePrice) : 'None'],
                         ['Min Increment', formatPrice(auction.minBidIncrement)],
                         ['Starts', formatDateTime(auction.startTime)],
                         ['Ends', formatDateTime(auction.endTime)],
                         ['Seller ID', `#${auction.sellerId}`],
-                        ['Highest Bidder', auction.highestBidderId ? `#${auction.highestBidderId}` : 'None yet'],
+                        ['Highest Bidder', displayBidderId ? `#${displayBidderId}` : 'None yet'],
                       ].map(([label, val]) => (
                         <div key={label} style={{
                           padding: '0.75rem 1rem', background: 'var(--bg-elevated)',
@@ -229,10 +248,10 @@ export default function AuctionDetailPage({ auctionId, setPage }) {
             <div className="bid-panel">
               <div className="bid-panel-price">
                 <div className="label">Current Highest Bid</div>
-                <div className="amount">{formatPrice(auction.currentPrice)}</div>
-                {auction.highestBidderId && (
+                <div className="amount">{formatPrice(displayPrice)}</div>
+                {displayBidderId && (
                   <div className="increment" style={{ marginTop: '0.25rem' }}>
-                    by Bidder #{auction.highestBidderId}
+                    by Bidder #{displayBidderId}
                   </div>
                 )}
                 <div className="increment">

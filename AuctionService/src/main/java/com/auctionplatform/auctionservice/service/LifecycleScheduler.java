@@ -61,8 +61,7 @@ public class LifecycleScheduler {
     }
 
     private void processAuctionsToStart(LocalDateTime now) {
-        List<Auction> toStart = auctionRepository.findAuctionsToStartForUpdateSkipLocked(
-                AuctionStatus.DRAFT.name(), now, batchSize);
+        List<Auction> toStart = auctionRepository.findAuctionsToStartForUpdateSkipLocked(now, batchSize);
 
         if (toStart.isEmpty()) {
             return;

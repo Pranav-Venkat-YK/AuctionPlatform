@@ -27,8 +27,8 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
     @Query("SELECT a FROM Auction a WHERE a.status = :status AND a.endTime <= :now")
     List<Auction> findActiveAuctionsToEnd(@Param("status") AuctionStatus status, @Param("now") LocalDateTime now);
 
-    @Query(value = "SELECT * FROM auctions WHERE status = :status AND start_time <= :now ORDER BY start_time ASC LIMIT :batchSize FOR UPDATE SKIP LOCKED", nativeQuery = true)
-    List<Auction> findAuctionsToStartForUpdateSkipLocked(@Param("status") String status, @Param("now") LocalDateTime now, @Param("batchSize") int batchSize);
+    @Query(value = "SELECT * FROM auctions WHERE status IN ('DRAFT', 'SCHEDULED', 'PENDING') AND start_time <= :now ORDER BY start_time ASC LIMIT :batchSize FOR UPDATE SKIP LOCKED", nativeQuery = true)
+    List<Auction> findAuctionsToStartForUpdateSkipLocked(@Param("now") LocalDateTime now, @Param("batchSize") int batchSize);
 
     @Query(value = "SELECT * FROM auctions WHERE status = :status AND end_time <= :now ORDER BY end_time ASC LIMIT :batchSize FOR UPDATE SKIP LOCKED", nativeQuery = true)
     List<Auction> findAuctionsToEndForUpdateSkipLocked(@Param("status") String status, @Param("now") LocalDateTime now, @Param("batchSize") int batchSize);

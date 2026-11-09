@@ -14,6 +14,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: user_db
+      TZ: Asia/Kolkata
+      PGTZ: Asia/Kolkata
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
@@ -98,6 +100,8 @@ services:
     ports:
       - "8081:8081"
     environment:
+      TZ: Asia/Kolkata
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Kolkata"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/user_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: password
@@ -120,6 +124,8 @@ services:
     ports:
       - "8083:8083"
     environment:
+      TZ: Asia/Kolkata
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Kolkata"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auction_db?stringtype=unspecified
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: password
@@ -146,6 +152,8 @@ services:
     ports:
       - "8082:8082"
     environment:
+      TZ: Asia/Kolkata
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Kolkata"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bidding_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: password

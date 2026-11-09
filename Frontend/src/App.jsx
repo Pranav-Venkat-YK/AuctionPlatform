@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
-import { AuthProvider } from './context/AuthContext';
+import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import Navbar from './components/Navbar';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
+import AuthPage from './pages/AuthPage';
 import HomePage from './pages/HomePage';
 import AuctionDetailPage from './pages/AuctionDetailPage';
 import CreateAuctionPage from './pages/CreateAuctionPage';
@@ -14,28 +13,46 @@ import LiveAuctionsPage from './pages/LiveAuctionsPage';
 import MyAuctionsPage from './pages/MyAuctionsPage';
 
 function AppContent() {
-  const [page, setPage] = useState('home');
+  const { user, token } = useAuth();
+  const [page, setPage] = useState(() => (token && user ? 'home' : 'login'));
   const [selectedAuction, setSelectedAuction] = useState(null);
 
+  // Authentication gate: enforce login/register for unauthenticated users
+  useEffect(() => {
+    if (!token || !user) {
+      if (page !== 'login' && page !== 'register') {
+        setPage('login');
+      }
+    } else {
+      // If authenticated and currently on an auth page, redirect to the dashboard
+      if (page === 'login' || page === 'register') {
+        setPage('home');
+      }
+    }
+  }, [token, user, page]);
+
+  // If user is not logged in, render the Login / Register screen
+  if (!token || !user) {
+    return <AuthPage mode={page === 'register' ? 'register' : 'login'} setPage={setPage} />;
+  }
+
+  // Once authenticated, render dashboard or selected internal view
   const renderPage = () => {
     switch (page) {
-      case 'login':    return <LoginPage setPage={setPage} />;
-      case 'register': return <RegisterPage setPage={setPage} />;
-      case 'auction':  return <AuctionDetailPage auctionId={selectedAuction} setPage={setPage} />;
-      case 'create':   return <CreateAuctionPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
-      case 'mybids':   return <MyBidsPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
-      case 'profile':  return <ProfilePage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
-      case 'live':     return <LiveAuctionsPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
+      case 'auction':    return <AuctionDetailPage auctionId={selectedAuction} setPage={setPage} />;
+      case 'create':     return <CreateAuctionPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
+      case 'mybids':     return <MyBidsPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
+      case 'profile':    return <ProfilePage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
+      case 'live':       return <LiveAuctionsPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
       case 'myauctions': return <MyAuctionsPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
-      default:         return <HomePage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
+      case 'home':
+      default:           return <HomePage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
     }
   };
 
-  const noNav = page === 'login' || page === 'register';
-
   return (
     <div>
-      {!noNav && <Navbar page={page} setPage={setPage} />}
+      <Navbar page={page} setPage={setPage} />
       {renderPage()}
     </div>
   );
@@ -52,4 +69,3 @@ export default function App() {
     </ThemeProvider>
   );
 }
-
