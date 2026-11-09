@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import Navbar from './components/Navbar';
+import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import HomePage from './pages/HomePage';
 import AuctionDetailPage from './pages/AuctionDetailPage';
@@ -19,32 +20,34 @@ function AppContent() {
   const [page, setPage] = useState(() => {
     if (window.location.pathname.startsWith('/payment/success')) return 'payment-success';
     if (window.location.pathname.startsWith('/payment/cancel')) return 'payment-cancel';
-    return (token && user ? 'home' : 'login');
+    return (token && user ? 'home' : 'landing');
   });
   const [selectedAuction, setSelectedAuction] = useState(null);
 
-  // Authentication gate: enforce login/register for unauthenticated users
+  // Authentication gate: redirect protected internal views to login
   useEffect(() => {
+    const protectedPages = ['create', 'mybids', 'profile', 'myauctions'];
     if (!token || !user) {
-      if (page !== 'login' && page !== 'register') {
+      if (protectedPages.includes(page)) {
         setPage('login');
       }
     } else {
-      // If authenticated and currently on an auth page, redirect to the dashboard
+      // If authenticated and on an auth page, navigate to dashboard
       if (page === 'login' || page === 'register') {
         setPage('home');
       }
     }
   }, [token, user, page]);
 
-  // If user is not logged in, render the Login / Register screen
-  if (!token || !user) {
+  // If user explicitly requests login or register view, render AuthPage
+  if ((!token || !user) && (page === 'login' || page === 'register')) {
     return <AuthPage mode={page === 'register' ? 'register' : 'login'} setPage={setPage} />;
   }
 
-  // Once authenticated, render dashboard or selected internal view
+  // Render current selected view with navigation bar
   const renderPage = () => {
     switch (page) {
+      case 'landing':         return <LandingPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
       case 'auction':         return <AuctionDetailPage auctionId={selectedAuction} setPage={setPage} />;
       case 'create':          return <CreateAuctionPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
       case 'mybids':          return <MyBidsPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
@@ -53,8 +56,10 @@ function AppContent() {
       case 'myauctions':      return <MyAuctionsPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
       case 'payment-success': return <PaymentSuccessPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
       case 'payment-cancel':  return <PaymentCancelPage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
-      case 'home':
-      default:                return <HomePage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
+      case 'home':            return <HomePage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
+      default:                return (!token || !user)
+                                ? <LandingPage setPage={setPage} setSelectedAuction={setSelectedAuction} />
+                                : <HomePage setPage={setPage} setSelectedAuction={setSelectedAuction} />;
     }
   };
 

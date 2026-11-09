@@ -9,18 +9,20 @@ export default function Navbar({ page, setPage }) {
 
   const initials = user?.username ? user.username.slice(0, 2).toUpperCase() : '?';
 
-  const navItems = [
+  const navItems = user ? [
     { label: 'Auctions Dashboard', key: 'home' },
     { label: 'Live Auctions',       key: 'live', isLive: true },
-    ...(user ? [
-      { label: 'Create Auction',    key: 'create' },
-      { label: 'My Bids',           key: 'mybids' },
-    ] : []),
+    { label: 'Create Auction',    key: 'create' },
+    { label: 'My Bids',           key: 'mybids' },
+  ] : [
+    { label: 'Home',              key: 'landing' },
+    { label: 'Explore Auctions',  key: 'home' },
+    { label: 'Live Auctions',     key: 'live', isLive: true },
   ];
 
   const handleSignOut = () => {
     logout();
-    setPage('login');
+    setPage('landing');
     setMenuOpen(false);
   };
 
@@ -30,7 +32,7 @@ export default function Navbar({ page, setPage }) {
         <button
           className="navbar-brand"
           style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem' }}
-          onClick={() => setPage('home')}
+          onClick={() => setPage(user ? 'home' : 'landing')}
         >
           <span className="brand-icon">🔨</span>
           <span>Bid<span className="brand-accent">Vault</span></span>

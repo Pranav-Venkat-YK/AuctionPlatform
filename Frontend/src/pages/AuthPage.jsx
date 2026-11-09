@@ -96,18 +96,33 @@ export default function AuthPage({ mode = 'login', setPage }) {
     <div className="auth-page-container">
       {/* Top utility bar */}
       <div className="auth-top-nav">
-        <div className="auth-brand-badge">
+        <button
+          type="button"
+          className="auth-brand-badge"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+          onClick={() => setPage && setPage('landing')}
+          title="Return to BidVault Home"
+        >
           <span className="brand-icon">🔨</span>
           <span className="brand-name">Bid<span className="brand-accent">Vault</span></span>
-        </div>
-        <button
-          className="theme-toggle"
-          onClick={toggleTheme}
-          title="Toggle theme"
-          type="button"
-        >
-          {theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}
         </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setPage && setPage('landing')}
+          >
+            ← Back to Home
+          </button>
+          <button
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title="Toggle theme"
+            type="button"
+          >
+            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+          </button>
+        </div>
       </div>
 
       <div className="auth-wrapper">

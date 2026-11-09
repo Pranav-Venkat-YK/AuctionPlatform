@@ -78,12 +78,12 @@ export default function HomePage({ setPage, setSelectedAuction }) {
   return (
     <div className="page">
       {/* Dashboard Welcome Hero */}
-      <div className="hero" style={{ padding: '2.5rem 0 2rem', borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+      <div className="hero" style={{ padding: '2.5rem 0 2rem', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
         <div className="container">
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--accent-light)', color: 'var(--accent)', padding: '0.25rem 0.75rem', borderRadius: 'var(--radius-xs)', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.85rem', border: '1px solid var(--accent-border)' }}>
             <span>⚡ Live Auction Dashboard</span>
           </div>
-          <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.2rem', letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.2rem', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
             Welcome back, <span style={{ color: 'var(--accent)' }}>{user?.fullName || user?.username || 'Bidder'}</span>!
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.98rem', maxWidth: '720px', lineHeight: 1.6 }}>
